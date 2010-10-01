@@ -1,0 +1,34 @@
+material uv_test
+{ 
+	technique 
+	{ 
+	  pass 
+	  { 
+	           texture_unit 
+	           {
+	                 texture uv_test.png 
+	           }
+	   } 
+	} 
+}
+
+material uv_blend_test
+{
+    technique
+    {
+        pass
+        {
+            texture_unit
+            {
+                texture uv_test.png
+                colour_op_ex source1 src_texture src_current
+            }
+
+            texture_unit
+            {
+                texture uv_test_alt.png
+                colour_op_ex blend_diffuse_alpha src_texture src_current
+            }
+        }
+    }
+}
