@@ -35,6 +35,18 @@ const Ogre::Vector3 Orangutan::Quad::QUAD_VERTICES[4] =
              Ogre::Vector3( 0.5f, 0, -0.5f)   // D
            };
 
+const Ogre::Vector3 Orangutan::Block::BLOCK_VERTICES[8] = 
+           {
+             Ogre::Vector3(-0.5f, 0.5,  0.5f),  // A
+             Ogre::Vector3( 0.5f, 0.5,  0.5f),  // B
+             Ogre::Vector3(-0.5f, 0.5, -0.5f),  // C
+             Ogre::Vector3( 0.5f, 0.5, -0.5f),  // D
+             Ogre::Vector3(-0.5f,-0.5,  0.5f),  // E
+             Ogre::Vector3( 0.5f,-0.5,  0.5f),  // F
+             Ogre::Vector3(-0.5f,-0.5, -0.5f),  // G
+             Ogre::Vector3( 0.5f,-0.5, -0.5f)   // H
+           };
+
 template<> Orangutan::Librarian* Ogre::Singleton<Orangutan::Librarian>::ms_Singleton = 0;
 
 #define PUSH_VERTEX(VERTEX, NEW_VERTEX) VERTEX.position = NEW_VERTEX; vertices.push_back(VERTEX);
@@ -42,9 +54,82 @@ template<> Orangutan::Librarian* Ogre::Singleton<Orangutan::Librarian>::ms_Singl
 namespace Orangutan
 {
  
+ 
+void writeOok(std::ofstream& stream, const Ogre::Vector3& vec, const Ogre::String& prefix = Ogre::StringUtil::BLANK)
+{
+ stream << prefix << vec.x << " " << vec.y << " " << vec.z << "\n";
+}
+
+void writeOok(std::ofstream& stream, const Ogre::Vector2& vec, const Ogre::String& prefix = Ogre::StringUtil::BLANK)
+{
+ stream << prefix << vec.x << " " << vec.y << "\n";
+}
+
+void writeOok(std::ofstream& stream, const Ogre::Quaternion& quat, const Ogre::String& prefix = Ogre::StringUtil::BLANK)
+{
+ stream << prefix << quat.w << " " << quat.x << " " << quat.y << " " << quat.z << "\n";
+}
+
+void writeOok(std::ofstream& stream, Ogre::ColourValue* colours, size_t count, const Ogre::String& prefix = Ogre::StringUtil::BLANK)
+{
+ stream << prefix;
+ for (size_t i=0;i < count;i++)
+ {
+  stream << colours[i].r << " " << colours[i].g << " " << colours[i].b << " " << colours[i].a;
+  if (i != count)
+   stream << " ";
+ }
+ stream << "\n";
+}
+
+void writeOok(std::ofstream& stream, const Ogre::Radian& rad, const Ogre::String& prefix = Ogre::StringUtil::BLANK)
+{
+ stream << prefix << rad.valueRadians() << "\n";
+}
+
+void writeOok(std::ofstream& stream, bool val, const Ogre::String& prefix = Ogre::StringUtil::BLANK)
+{
+ stream << prefix << (val? "yes" : "no") << "\n";
+}
 
 
+void writeOok(std::ofstream& stream, buffer<float> heights, const Ogre::String& prefix = Ogre::StringUtil::BLANK)
+{
+ stream << prefix << heights.size() << " [\n";
+ size_t i=0;
+ while (i != heights.size())
+ {
+  stream << "\t\t";
+  for (size_t j=0;j < 16;j++)
+  {
+   if (i == heights.size())
+    break;
+   stream << " " << heights[i++];
+  }
+  stream << "\n";
+ }
+ stream << "\t]\n";
+}
 
+
+void writeOok(std::ofstream& stream, buffer<Ogre::ColourValue> colours, const Ogre::String& prefix = Ogre::StringUtil::BLANK)
+{
+ stream << prefix << colours.size() << " [\n";
+ size_t i=0;
+ while (i != colours.size())
+ {
+  stream << "\t\t";
+  for (size_t j=0;j < 4;j++)
+  {
+   if (i == colours.size())
+    break;
+   stream << " " << colours[i].r << " " << colours[i].g << " " << colours[i].b << " " << colours[i].a;
+   i++;
+  }
+  stream << "\n";
+ }
+ stream << "\t]\n";
+}
 // ----------------------------------------------------------------------------------------
 
 
@@ -85,7 +170,7 @@ Geometry::Geometry(const Ogre::String& name)
 {
  mAABB.setExtents(Ogre::Vector3(-1,-1,-1), Ogre::Vector3(1,1,1));
  // Push back the default geometry.
- mGeometries[0] = OGRE_NEW GeometryRenderable("BaseWhiteNoLighting", Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME, this);
+ mGeometries[0] = OGRE_NEW GeometryRenderable("BaseWhiteNoLighting", Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME, this, 0);
 }
 
 Geometry::~Geometry()
@@ -107,7 +192,7 @@ void Geometry::setMaterialName(size_t index, const Ogre::String& materialName, c
   return;
  }
 
- GeometryRenderable* renderable = OGRE_NEW GeometryRenderable(materialName, group, this);
+ GeometryRenderable* renderable = OGRE_NEW GeometryRenderable(materialName, group, this, index);
  mGeometries[index] = renderable;
 }
 
@@ -116,7 +201,7 @@ GeometryRenderable* Geometry::getOrCreateRenderable(size_t index, const Ogre::St
  GeometryRenderables::iterator it = mGeometries.find(index);
  if (it != mGeometries.end())
   return (*it).second;
- GeometryRenderable* renderable = OGRE_NEW GeometryRenderable(materialName, groupName, this);
+ GeometryRenderable* renderable = OGRE_NEW GeometryRenderable(materialName, groupName, this, index);
  mGeometries[index] = renderable;
  return renderable;
 }
@@ -162,15 +247,17 @@ Block*  Geometry::createBlock(const Ogre::Vector3& position, const Ogre::Vector3
  Block* block = OGRE_NEW Orangutan::Block(position, size, orientation, materialIndex, this);
  mBlocks.push_back(block);
  GeometryRenderable* renderable = getOrCreateRenderable(materialIndex);
- renderable->pushBrush(block);
+ redrawNeeded(materialIndex);
  return block;
 }
 
 void   Geometry::destroyBlock(Block* block)
 {
- GeometryRenderable* renderable = getOrCreateRenderable(block->getIndex());
- renderable->popBrush(block);
  mBlocks.erase(std::find(mBlocks.begin(), mBlocks.end(), block));
+ 
+ for (GeometryRenderables::iterator it = mGeometries.begin(); it != mGeometries.end();it++)
+  redrawNeeded((*it).first);
+ 
  OGRE_DELETE block;
 }
 
@@ -221,7 +308,43 @@ void  Geometry::visitRenderables(Ogre::Renderable::Visitor* visitor, bool debugR
 }
 
 
+void Geometry::loadFromOokFile(const Ogre::String& filename, const Ogre::String& resourceGroup)
+{
 
+}
+
+
+void Geometry::saveAsOokFile(const Ogre::String& filename)
+{
+ 
+ std::ofstream stream;
+ stream.open(filename.c_str(), std::ios::out | std::ios::binary);
+ stream << "OOK! 0.1\n";
+ 
+ for (GeometryRenderables::iterator it = mGeometries.begin(); it != mGeometries.end();it++)
+  stream << "uses \"" << (*it).second->getMaterial()->getName() << "\" as " << (*it).first << "\n";
+ 
+ stream << "\n";
+ size_t id = 0;
+
+ // Planes
+ // ----------------------------------------
+ for (std::vector<Plane*>::iterator it = mPlanes.begin(); it != mPlanes.end();it++)
+  (*it)->saveToOok(stream);
+ 
+ // Displacements
+ // ----------------------------------------
+ for (std::vector<Displacement*>::iterator it = mDisplacements.begin(); it != mDisplacements.end();it++)
+  (*it)->saveToOok(stream);
+
+ stream << "\n";
+ stream.close();
+}
+
+void Geometry::saveAsMesh(const Ogre::String& filename)
+{
+
+}
 
 // ----------------------------------------------------------------------------------------
 
@@ -229,27 +352,25 @@ void  Geometry::visitRenderables(Ogre::Renderable::Visitor* visitor, bool debugR
 
 
  
-GeometryRenderable::GeometryRenderable(const Ogre::String& materialName, const Ogre::String& materialGroup, Geometry* parent)
+GeometryRenderable::GeometryRenderable(const Ogre::String& materialName, const Ogre::String& materialGroup, Geometry* parent, size_t index)
 : mMaterialName(materialName),
   mMaterialGroup(materialGroup),
   mParent(parent),
   mVertexBufferSize(0),
-  mIndexBufferSize(0)
+  mIndexBufferSize(0),
+  mIndex(index)
 {
- std::cout << __FUNCTION__ << "\n";
  _create();
 }
 
 GeometryRenderable::~GeometryRenderable()
 {
- std::cout << __FUNCTION__ << "\n";
  _destroy();
 }
 
 void GeometryRenderable::_renderVertices(bool force)
 {
   
- std::cout << __FUNCTION__ << "\n";
  if (mRedrawNeeded == false)
   if (!force)
    return;
@@ -264,6 +385,17 @@ void GeometryRenderable::_renderVertices(bool force)
   mAABB.merge((*it)->getAABB());
  }
 
+ // Multibrushes
+  // --- Blocks
+  for (std::vector<Block*>::iterator it = mParent->mBlocks.begin(); it != mParent->mBlocks.end();it++)
+  {
+   (*it)->_render(mVertices, mIndexes, mIndex);
+   mAABB.merge((*it)->getAABB());
+  }
+ 
+ 
+ 
+ 
  // Copy to VertexBuffer
  _resizeVertexBuffer(mVertices.size());
  Vertex* writeIterator = (Vertex*) mVertexBuffer->lock(Ogre::HardwareBuffer::HBL_DISCARD);
@@ -566,7 +698,20 @@ void Plane::_render(buffer<Vertex>& vertices, buffer<Index>& indexes)
  mQuad->_render(vertices, indexes);
 }
 
-
+void Plane::saveToOok(std::ofstream& stream)
+{
+ stream << "brush \"plane\" \n";
+ writeOok(stream, mQuad->mPosition, "\tposition ");
+ writeOok(stream, mQuad->mOrientation, "\torientation ");
+ writeOok(stream, mQuad->mSize, "\tsize ");
+ writeOok(stream, mQuad->mColours, 4, "\tcolours ");
+ writeOok(stream, mQuad->mTextureAngle, "\ttexture_angle ");
+ writeOok(stream, mQuad->mTextureFlipX, "\ttexture_flip_x ");
+ writeOok(stream, mQuad->mTextureFlipY, "\ttexture_flip_y ");
+ writeOok(stream, mQuad->mTextureOffset, "\ttexture_offset ");
+ writeOok(stream, mQuad->mTextureZoom, "\ttexture_offset ");
+ stream << ";\n\n";
+}
 
 
 Displacement::Displacement(const Ogre::Vector3& position, const Ogre::Vector3& scale, const Ogre::Quaternion& orientation, size_t materialIndex, Geometry* geometry)
@@ -586,6 +731,22 @@ Displacement::Displacement(const Ogre::Vector3& position, const Ogre::Vector3& s
 
 Displacement::~Displacement()
 {
+}
+
+void Displacement::saveToOok(std::ofstream& stream)
+{
+ stream << "brush \"displacement\" \n";
+ writeOok(stream, mPosition, "\tposition ");
+ writeOok(stream, mOrientation, "\torientation ");
+ writeOok(stream, mScale, "\tscale ");
+ writeOok(stream, mTextureAngle, "\ttexture_angle ");
+ writeOok(stream, mTextureFlipX, "\ttexture_flip_x ");
+ writeOok(stream, mTextureFlipY, "\ttexture_flip_y ");
+ writeOok(stream, mTextureOffset, "\ttexture_offset ");
+ writeOok(stream, mTextureZoom, "\ttexture_offset ");
+ writeOok(stream, mHeights, "\theights ");
+ writeOok(stream, mColours, "\tcolours ");
+ stream << ";\n\n";
 }
 
 void Displacement::_render(buffer<Vertex>& vertices, buffer<Index>& indexes)
@@ -712,19 +873,23 @@ void Displacement::_updateRequired()
 }
 
 Block::Block(const Ogre::Vector3& position, const Ogre::Vector3& size, const Ogre::Quaternion& orientation, size_t index, Geometry* geometry)
- : Brush(geometry, index),
+ : MultiBrush(geometry),
    mPosition(position),
    mSize(size),
    mOrientation(orientation)
 {
  
- mHasQuads[0] = true;
- mHasQuads[1] = true;
- mHasQuads[2] = true;
- mHasQuads[3] = true;
- mHasQuads[4] = true;
- mHasQuads[5] = true;
- 
+ for (size_t i=0; i < 6;i++)
+ {
+  mHasQuads[i] = true;
+  mQuadMaterial[i] = index;
+  mQuadTextureScale[i] = Ogre::Vector2(1,1);
+  mQuadTextureOffset[i] = Ogre::Vector2(0,0);
+  mQuadTextureFlipX[i] = false;
+  mQuadTextureFlipY[i] = false;
+  mQuadTextureColour[i] = Ogre::ColourValue(1.0f, 1.0f, 1.0f, 1.0f);
+ }
+
  _updateRequired();
 }
 
@@ -733,71 +898,162 @@ Block::~Block()
 
 }
 
-void Block::_render(buffer<Vertex>& vertices, buffer<Index>& indexes)
+void Block::_render(buffer<Vertex>& vertices, buffer<Index>& indexes, size_t index)
 {
- size_t begin = mVertices.size();
+ size_t j = 0;
+ for (size_t i=0; i < 6;i++)
+ {
+   std::cout << "Block::_render @ " << i << "\n";
+  if (mHasQuads[i] == false)
+   continue;
+  
+  if (mQuadMaterial[i] != index)
+   continue;
+  
+  j = vertices.size();
+  vertices.push_back( mQuadVertexData[i].mVertices[0] );
+  vertices.push_back( mQuadVertexData[i].mVertices[1] );
+  vertices.push_back( mQuadVertexData[i].mVertices[2] );
+  vertices.push_back( mQuadVertexData[i].mVertices[3] );
+
+  indexes.push_back( j + mQuadVertexData[i].mIndexes[0] );
+  indexes.push_back( j + mQuadVertexData[i].mIndexes[1] );
+  indexes.push_back( j + mQuadVertexData[i].mIndexes[2] );  // Remove mIndexes, and just hardcode it.
+  indexes.push_back( j + mQuadVertexData[i].mIndexes[3] );
+  indexes.push_back( j + mQuadVertexData[i].mIndexes[4] );
+  indexes.push_back( j + mQuadVertexData[i].mIndexes[5] );
+  
+  std::cout << "Block::_render == " << i << "\n";
+  
+ }
+#if 0
+ size_t base = vertices.size();
+ 
  for(size_t i=0;i < mVertices.size();i++)
  {
   std::cout << mVertices[i].position << "\n";
   vertices.push_back(mVertices[i]);
  }
-
+ 
  for(size_t i=0;i < mIndexes.size();i++)
  {
-  std::cout << mIndexes[i] << "\n";
-  indexes.push_back(begin + mIndexes[i]);
+  indexes.push_back(base + mIndexes[i]);
  }
-
- std::cout << "_render: " << mVertices.size() << ":" << mIndexes.size() << "\n";
+#endif
 }
 
 void Block::_updateRequired()
 {
  
- mVertices.remove_all();
- mIndexes.remove_all();
+ // Transform
+ mTransform.makeTransform(mPosition, mSize, mOrientation);
  mAABB.setNull();
- 
- size_t i = 0;
- Ogre::Vector3 halfSize = mSize * 0.5f;
- Vertex vertex;
+
+#define BLOCK_VERTEX(REF_ID, ID, QUAD, U, V)                                \
+ mQuadVertexData[QUAD].mVertices[REF_ID].position = BLOCK_VERTICES[ID];     \
+ mQuadVertexData[QUAD].mVertices[REF_ID].uv.x = U;                          \
+ mQuadVertexData[QUAD].mVertices[REF_ID].uv.y = V;                          \
+ mQuadVertexData[QUAD].mVertices[REF_ID].colour = mQuadTextureColour[QUAD];  
+
+#define BLOCK_UV(QUAD)                                                \
+  for (size_t j=0; j < 4;j++)                                         \
+  {                                                                   \
+   mQuadVertexData[QUAD].mVertices[j].uv *= mQuadTextureScale[QUAD];  \
+   mQuadVertexData[QUAD].mVertices[j].uv += mQuadTextureOffset[QUAD]; \
+   if (mQuadTextureFlipX[QUAD])                                       \
+    mQuadVertexData[QUAD].mVertices[j].uv.x = -mQuadVertexData[QUAD].mVertices[j].uv.x;     \
+   if (mQuadTextureFlipY[QUAD])                                       \
+    mQuadVertexData[QUAD].mVertices[j].uv.y = -mQuadVertexData[QUAD].mVertices[j].uv.y;     \
+  }                                                                    
+
+#define BLOCK_TRANSFORM(QUAD)                                   \
+ for (size_t j=0;j < 4;j++)                                     \
+ {                                                              \
+  mQuadVertexData[QUAD].                                        \
+     mVertices[j].position =                                    \
+      mTransform * mQuadVertexData[QUAD].mVertices[j].position; \
+  mAABB.merge(mQuadVertexData[QUAD].mVertices[j].position);     \
+ }                                                               
+
+#define BLOCK_TRANGLES(QUAD)              \
+  mQuadVertexData[QUAD].mIndexes[0] = 2;  \
+  mQuadVertexData[QUAD].mIndexes[1] = 0;  \
+  mQuadVertexData[QUAD].mIndexes[2] = 1;  \
+  mQuadVertexData[QUAD].mIndexes[3] = 2;  \
+  mQuadVertexData[QUAD].mIndexes[4] = 1;  \
+  mQuadVertexData[QUAD].mIndexes[5] = 3;   
+  
  if (mHasQuads[Quad_Top])
  {
-  std::cout << "QUADSSS\n";
-  //Ogre::Vector3(-0.5f, 0,  0.5f),  // A
-  //Ogre::Vector3( 0.5f, 0,  0.5f),  // B
-  //Ogre::Vector3(-0.5f, 0, -0.5f),  // C
-  //Ogre::Vector3( 0.5f, 0, -0.5f)   // D
-  
-  vertex.position = Ogre::Vector3(-halfSize.x, halfSize.y,  halfSize.z); // A
-  mAABB.merge(vertex.position);
-  mVertices.push_back(vertex); // A
-  vertex.position = Ogre::Vector3( halfSize.x, halfSize.y,  halfSize.z); // B
-  mAABB.merge(vertex.position);
-  mVertices.push_back(vertex); // B
-  vertex.position = Ogre::Vector3(-halfSize.x, halfSize.y, -halfSize.z); // C
-  mAABB.merge(vertex.position);
-  mVertices.push_back(vertex); // C
-  vertex.position = Ogre::Vector3( halfSize.x, halfSize.y, -halfSize.z); // D
-  mAABB.merge(vertex.position);
-  mVertices.push_back(vertex); // D
-  
-  mIndexes.push_back(i+2); // C
-  mIndexes.push_back(i);   // A
-  mIndexes.push_back(i+1); // B
-  
-  mIndexes.push_back(i+2); // C
-  mIndexes.push_back(i+1); // B
-  mIndexes.push_back(i+3); // D
-  
+  BLOCK_VERTEX(0, 0, Quad_Top,  0,0)
+  BLOCK_VERTEX(1, 1, Quad_Top, -1,0)
+  BLOCK_VERTEX(2, 2, Quad_Top,  0,1)
+  BLOCK_VERTEX(3, 3, Quad_Top, -1,1)
+  BLOCK_UV(Quad_Top)
+  BLOCK_TRANSFORM(Quad_Top)
+  BLOCK_TRANGLES(Quad_Top)
  }
- 
- i = mVertices.size();
   
  if (mHasQuads[Quad_Bottom])
  {
-  
+  BLOCK_VERTEX(0, 5, Quad_Bottom,  0,0)
+  BLOCK_VERTEX(1, 4, Quad_Bottom, -1,0)
+  BLOCK_VERTEX(2, 7, Quad_Bottom,  0,1)
+  BLOCK_VERTEX(3, 6, Quad_Bottom, -1,1)
+  BLOCK_UV(Quad_Bottom)
+  BLOCK_TRANSFORM(Quad_Bottom)
+  BLOCK_TRANGLES(Quad_Bottom)
  }
+  
+ if (mHasQuads[Quad_Left])
+ {
+  BLOCK_VERTEX(0, 0, Quad_Left,  0,0)
+  BLOCK_VERTEX(1, 2, Quad_Left, -1,0)
+  BLOCK_VERTEX(2, 4, Quad_Left,  0,1)
+  BLOCK_VERTEX(3, 6, Quad_Left, -1,1)
+  BLOCK_UV(Quad_Left)
+  BLOCK_TRANSFORM(Quad_Left)
+  BLOCK_TRANGLES(Quad_Left)
+ }
+  
+ if (mHasQuads[Quad_Right])
+ {
+  BLOCK_VERTEX(0, 3, Quad_Right,  0,0)
+  BLOCK_VERTEX(1, 1, Quad_Right, -1,0)
+  BLOCK_VERTEX(2, 7, Quad_Right,  0,1)
+  BLOCK_VERTEX(3, 5, Quad_Right, -1,1)
+  BLOCK_UV(Quad_Right)
+  BLOCK_TRANSFORM(Quad_Right)
+  BLOCK_TRANGLES(Quad_Right)
+ }
+  
+ if (mHasQuads[Quad_Front])
+ {
+  BLOCK_VERTEX(0, 1, Quad_Front,  0,0)
+  BLOCK_VERTEX(1, 0, Quad_Front, -1,0)
+  BLOCK_VERTEX(2, 5, Quad_Front,  0,1)
+  BLOCK_VERTEX(3, 4, Quad_Front, -1,1)
+  BLOCK_UV(Quad_Front)
+  BLOCK_TRANSFORM(Quad_Front)
+  BLOCK_TRANGLES(Quad_Front)
+ }
+  
+ if (mHasQuads[Quad_Back])
+ {
+  BLOCK_VERTEX(0, 2, Quad_Back,  0,0)
+  BLOCK_VERTEX(1, 3, Quad_Back, -1,0)
+  BLOCK_VERTEX(2, 6, Quad_Back,  0,1)
+  BLOCK_VERTEX(3, 7, Quad_Back, -1,1)
+  BLOCK_UV(Quad_Back)
+  BLOCK_TRANSFORM(Quad_Back)
+  BLOCK_TRANGLES(Quad_Back)
+ }
+ 
+ std::cout << mAABB << "\n";
+#undef BLOCK_VERTEX
+#undef BLOCK_UV
+#undef BLOCK_TRANGLES
+ 
  
 }
 

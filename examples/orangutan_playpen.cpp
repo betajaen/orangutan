@@ -35,12 +35,13 @@ class App : public Ogre::FrameListener, public OIS::KeyListener, public OIS::Mou
    // has been created, Ogre knows what you mean.
    mGeometry = static_cast<Orangutan::Geometry*>( mSceneMgr->createMovableObject("OrangutanGeometry") );
    mGeometry->setMaterialName(0, "uv_blend_test");
+   mGeometry->setMaterialName(1, "BaseWhiteNoLighting");
    
    // Then attach it. Just treat Geometries like Entities, Lights or ManualObjects.
    mNode->attachObject(mGeometry);
-   //mGeometry->createPlane(Ogre::Vector3(0,0,0), Ogre::Vector2(10,10));
+   mGeometry->createPlane(Ogre::Vector3(0,0,0), Ogre::Vector2(10,10));
 #if 1
-   Orangutan::Displacement* dis = mGeometry->createDisplacement(Ogre::Vector3(0,0,0), Ogre::Vector3(1,2,1));
+   Orangutan::Displacement* dis = mGeometry->createDisplacement(Ogre::Vector3(0,0,0), Ogre::Vector3(0.25,0.25,0.25));
    dis->begin(10,10);
    for (size_t i=0;i < 10*10;i++)
    {
@@ -49,7 +50,10 @@ class App : public Ogre::FrameListener, public OIS::KeyListener, public OIS::Mou
    dis->end();
    mNode->showBoundingBox(true);
 #endif
-   mGeometry->createBlock(Ogre::Vector3(0,0,0), Ogre::Vector3(1,1,1));
+   Orangutan::Block* block = mGeometry->createBlock(Ogre::Vector3(0,0,0), Ogre::Vector3(20,1,10));
+   block->quad_index(Orangutan::Block::Quad_Top, 1);
+   block->quad_show(Orangutan::Block::Quad_Left);
+   mGeometry->saveAsOokFile("test.ook");
   }
   
  ~App()
@@ -110,7 +114,7 @@ class App : public Ogre::FrameListener, public OIS::KeyListener, public OIS::Mou
    }
    else if (e.key == OIS::KC_F2)
    {
-    if (mCamera->getPolygonMode() == Ogre::PolygonMode::PM_WIREFRAME)
+    if (mCamera->getPolygonMode() == Ogre::PM_WIREFRAME)
      mCamera->setPolygonMode(Ogre::PM_SOLID);
     else
      mCamera->setPolygonMode(Ogre::PM_WIREFRAME);

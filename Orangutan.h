@@ -207,7 +207,7 @@ namespace Orangutan
    
    friend class Geometry;
    
-   GeometryRenderable(const Ogre::String& materialName, const Ogre::String& materialGroup, Geometry*);
+   GeometryRenderable(const Ogre::String& materialName, const Ogre::String& materialGroup, Geometry*, size_t index);
    
   ~GeometryRenderable();
    
@@ -296,12 +296,16 @@ namespace Orangutan
    Geometry*                           mParent;
    // AABB
    Ogre::AxisAlignedBox                mAABB;
+   // Index
+   size_t                              mIndex;
  };
  
  class Geometry : public Ogre::MovableObject
  {
    
   public:
+   
+   friend class GeometryRenderable;
    
    static const Ogre::String DEFAULT_MATERIAL_NAME;
    
@@ -382,7 +386,13 @@ namespace Orangutan
     if (mParentNode)
      mParentNode->needUpdate();
    }
-
+   
+   void loadFromOokFile(const Ogre::String& filename, const Ogre::String& resourceGroup = Ogre::ResourceGroupManager::DEFAULT_RESOURCE_GROUP_NAME);
+   
+   void saveAsOokFile(const Ogre::String& filename);
+   
+   void saveAsMesh(const Ogre::String& filename);
+   
   protected:
    
    Geometry(const Ogre::String& name);
@@ -430,6 +440,29 @@ namespace Orangutan
    
    Geometry*            mGeometry;
    size_t               mIndex;
+   Ogre::Matrix4        mTransform;
+   Ogre::AxisAlignedBox mAABB;
+   
+ };
+ 
+ class MultiBrush
+ {
+   
+  public:
+   
+   MultiBrush(Geometry* geom) : mGeometry(geom) {}
+   
+   virtual ~MultiBrush() {}
+
+   virtual void _render(buffer<Vertex>&, buffer<Index>&, size_t materialIndex) {}
+   
+   void redrawNeeded(size_t index) { mGeometry->redrawNeeded(index); }
+   
+   inline const Ogre::AxisAlignedBox& getAABB() const { return mAABB; }
+   
+  protected:
+   
+   Geometry*            mGeometry;
    Ogre::Matrix4        mTransform;
    Ogre::AxisAlignedBox mAABB;
    
@@ -487,7 +520,9 @@ namespace Orangutan
  {
    
    public:
-    
+   
+  friend class Geometry;
+   
    Plane(const Ogre::Vector3& position, const Ogre::Vector2& size, const Ogre::Quaternion& orientation, size_t materialIndex, Geometry*);
     
   ~Plane() {delete mQuad;}
@@ -506,6 +541,8 @@ namespace Orangutan
     mQuad->mPosition = position;
     _updateRequired();
    }
+   
+   void saveToOok(std::ofstream& stream);
    
   protected:
     
@@ -526,6 +563,8 @@ namespace Orangutan
    Displacement(const Ogre::Vector3& position, const Ogre::Vector3& scale, const Ogre::Quaternion& orientation, size_t materialIndex, Geometry*);
    
   ~Displacement();
+   
+   void saveToOok(std::ofstream& stream);
    
    void _render(buffer<Vertex>&, buffer<Index>&);
    
@@ -689,7 +728,7 @@ namespace Orangutan
    bool                       mDescribing;
  };
  
-class Block : public Brush, public Ogre::GeneralAllocatedObject
+class Block : public MultiBrush, public Ogre::GeneralAllocatedObject
 {
   
  public:
@@ -708,18 +747,53 @@ class Block : public Brush, public Ogre::GeneralAllocatedObject
    
   ~Block();
    
-   void _render(buffer<Vertex>&, buffer<Index>&);
+   void _render(buffer<Vertex>&, buffer<Index>&, size_t index);
    
    void _updateRequired();
    
+   void quad_show(QuadID id)
+   {
+    mHasQuads[id] = true;
+    _updateRequired();
+    redrawNeeded(mQuadMaterial[id]);
+   }
+   
+   void quad_hide(QuadID id)
+   {
+    mHasQuads[id] = false;
+    _updateRequired();
+    redrawNeeded(mQuadMaterial[id]);
+   }
+
+   void quad_index(QuadID id, size_t index)
+   {
+    mHasQuads[id] = true;
+   size_t old_index = mQuadMaterial[id];
+    mQuadMaterial[id] = index;
+    _updateRequired();
+    redrawNeeded(index);
+    //redrawNeeded(old_index);
+   }
+
  protected:
    
-   bool             mHasQuads[6];
-   Ogre::Vector3    mPosition, mSize;
-   Ogre::Quaternion mOrientation;
+   bool                          mHasQuads[6];
+   Ogre::Vector3                 mPosition, mSize;
+   Ogre::Quaternion              mOrientation;
+   struct QuadVertexData
+   {
+    Vertex                       mVertices[4];
+    Index                        mIndexes[6];
+   };
+   QuadVertexData                mQuadVertexData[6];
+   size_t                        mQuadMaterial[6];
+   Ogre::Vector2                 mQuadTextureScale[6];
+   Ogre::Vector2                 mQuadTextureOffset[6];
+   bool                          mQuadTextureFlipX[6];
+   bool                          mQuadTextureFlipY[6];
+   Ogre::ColourValue             mQuadTextureColour[6];
    
-   buffer<Vertex>   mVertices;
-   buffer<Index>    mIndexes;
+   static const Ogre::Vector3    BLOCK_VERTICES[8];
    
 };
 
